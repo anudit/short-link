@@ -29,6 +29,6 @@ COPY --from=builder /app/target/release/short-link /usr/local/bin/short-link
 COPY --from=builder /app/links.json /usr/local/bin/links.json
 
 
-EXPOSE 5007
+EXPOSE 5008
 
 CMD ["/usr/local/bin/short-link"]

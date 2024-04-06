@@ -70,7 +70,7 @@ async fn main() {
         .layer(CompressionLayer::new())
         .with_state(Arc::clone(&shared_state));
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:5007").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:5008").await.unwrap();
     tracing::debug!("listening on {}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
 }
