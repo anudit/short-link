@@ -1,3 +1,5 @@
+extern crate dotenv;
+
 use axum::{
     error_handling::HandleErrorLayer,
     extract::{Path, State},
@@ -7,10 +9,12 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use dotenv::dotenv;
+use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{from_str, json};
 use std::fs::read_to_string;
-use std::{borrow::Cow, collections::HashMap, sync::Arc, time::Duration};
+use std::{borrow::Cow, collections::HashMap, env, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 use tower::{BoxError, ServiceBuilder};
 use tower_http::{
@@ -32,8 +36,54 @@ struct AppState {
 
 type SharedState = Arc<RwLock<AppState>>;
 
+async fn send_umami_track_event(url: &str, shortcode: &str) -> Result<(), reqwest::Error> {
+    let client = Client::new();
+    let umami_host = "https://umami.omnid.io/api/send";
+
+    let website_id = match env::var("UMAMI_WEBSITE_ID") {
+        Ok(v) => v,
+        Err(_) => "dev".to_string(),
+    };
+
+    eprint!("website_id:{:?}", website_id);
+
+    let payload = json!({
+        "type": "event",
+        "payload": {
+            "website": website_id,
+            "name": shortcode,
+            "url": url
+        }
+    });
+
+    let response = client
+        .post(umami_host)
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (U; Linux x86_64; en-US) Gecko/20130401 Firefox/69.6",
+        )
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await;
+
+    match response {
+        Ok(resp) => match resp.text().await {
+            Ok(text) => {
+                eprint!("{:?}", text);
+            }
+            Err(e) => eprintln!("Failed to read response text: {}", e),
+        },
+        Err(e) => eprintln!("Failed to send request: {}", e),
+    }
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() {
+    dotenv().ok();
+
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -42,7 +92,7 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let file_contents = read_to_string("links.json").expect("Failed to read links.json file");
+    let file_contents = read_to_string("./links.json").expect("Failed to read links.json file");
     let link_map: LinkMap = from_str(&file_contents).expect("Failed to parse JSON");
 
     let app_state = AppState {
@@ -51,6 +101,7 @@ async fn main() {
     let shared_state = Arc::new(RwLock::new(app_state));
 
     let app = Router::new()
+        .route("/", get(get_links_count))
         .route("/:shortcode", get(redirect_to_link))
         .layer(
             ServiceBuilder::new()
@@ -100,7 +151,18 @@ async fn redirect_to_link(
     let link_map = app_state.link_map.read().await; // Now access the link_map within AppState
 
     match link_map.get(&shortcode) {
-        Some(url) => Ok(Redirect::permanent(url)),
+        Some(url) => {
+            let _ = send_umami_track_event(url, &shortcode).await;
+            Ok(Redirect::permanent(url))
+        }
         None => Err((StatusCode::NOT_FOUND, Json(json!({"error": "Not Found"})))),
     }
+}
+
+async fn get_links_count(State(state): State<SharedState>) -> impl IntoResponse {
+    let app_state = state.read().await; // Access the AppState
+    let link_map = app_state.link_map.read().await; // Access the link_map within AppState
+
+    let count = link_map.len();
+    (StatusCode::OK, Json(json!({"total_links": count})))
 }

@@ -6,7 +6,7 @@ A stupidly fast in-memory link shortner.
 
 ```
 docker build -t short-link .
-docker run -p 5001:5001 --name short-link short-link
+docker run -p 5008:5008 --name short-link short-link
 ```
 
 ### Traefik CORS

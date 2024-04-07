@@ -24,11 +24,13 @@ RUN apt-get update && \
     apt-get install -y libssl-dev ca-certificates && \
     update-ca-certificates
 
-# Copy the compiled binary and any other necessary files
-COPY --from=builder /app/target/release/short-link /usr/local/bin/short-link
-COPY --from=builder /app/links.json /usr/local/bin/links.json
+WORKDIR /app
 
+# Copy the compiled binary and any other necessary files
+COPY --from=builder /app/target/release/short-link /app/
+COPY --from=builder /app/links.json /app/links.json
+# RUN ls /app
 
 EXPOSE 5008
 
-CMD ["/usr/local/bin/short-link"]
+CMD ["/app/short-link"]
