@@ -15,6 +15,7 @@ use serde::Deserialize;
 use serde_json::{from_str, json};
 use std::fs::read_to_string;
 use std::{borrow::Cow, collections::HashMap, env, sync::Arc, time::Duration};
+use tokio::spawn;
 use tokio::sync::RwLock;
 use tower::{BoxError, ServiceBuilder};
 use tower_http::{
@@ -45,7 +46,7 @@ async fn send_umami_track_event(url: &str, shortcode: &str) -> Result<(), reqwes
         Err(_) => "dev".to_string(),
     };
 
-    eprint!("website_id:{:?}", website_id);
+    print!("website_id:{:?}", website_id);
 
     let payload = json!({
         "type": "event",
@@ -152,7 +153,11 @@ async fn redirect_to_link(
 
     match link_map.get(&shortcode) {
         Some(url) => {
-            let _ = send_umami_track_event(url, &shortcode).await;
+            let url_for_background = url.clone();
+            spawn(async move {
+                let _ = send_umami_track_event(&url_for_background, &shortcode).await;
+            });
+
             Ok(Redirect::permanent(url))
         }
         None => Err((StatusCode::NOT_FOUND, Json(json!({"error": "Not Found"})))),
